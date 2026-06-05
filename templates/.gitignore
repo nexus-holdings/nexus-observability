@@ -1,0 +1,23 @@
+# Nexus Holdings — Templates .gitignore
+# Prevents secrets and runtime artifacts from being committed.
+
+# Environment files with real values
+.env
+.env.secrets
+.env.local
+.env.*.local
+
+# SSL certificates
+nginx/certs/*.pem
+nginx/certs/*.key
+nginx/certs/*.crt
+
+# Docker volumes
+pgdata/
+
+# Deployment state
+.deploy-state
+
+# OS files
+.DS_Store
+Thumbs.db

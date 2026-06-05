@@ -1,0 +1,128 @@
+# Nexus Holdings — CI Pipeline (PR Checks)
+#
+# Triggers on pull requests + pushes to main.
+# Runs: lint, test, security scan (OWASP-aligned).
+#
+# NO PUBLISHING during dev phase (Option D from nexus ticket 97635207):
+#   This template intentionally contains NO image-publish job. Downstream
+#   company repos that need to publish must add a publish workflow
+#   explicitly, with sole-control destinations only. Rationale:
+#   - nexus ticket 97635207 — "Fix template workflows to prevent auto-push to ghcr.io"
+#   - docs/incidents/2026-04-16-npm-publish-audit.md (in nexus monorepo)
+#   - no-publishing policy (2026-04-17): no workflow in any nexus-holdings
+#     repo publishes to external destinations during dev
+#
+# Drift:
+#   This file is kept byte-for-byte identical with the sister copy in
+#   `the-epistemic-lens` — any edit must touch both. The `template-drift-check`
+#   workflow in each repo's `.github/workflows/` enforces this.
+
+name: CI — PR Checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  # ── Lint ─────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+
+  # ── Test ─────────────────────────────────────────────────
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: nexus_test
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: nexus_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nexus_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+        env:
+          DATABASE_URL: postgresql://nexus_test:test_password@localhost:5432/nexus_test_db
+          NODE_ENV: test
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+  # ── Security Scan (OWASP-aligned) ───────────────────────
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      # Dependency audit (OWASP A06: Vulnerable & Outdated Components)
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+        continue-on-error: false
+
+      # Static analysis / secret scanning (OWASP A07: Identity & Auth Failures)
+      - name: Check for leaked secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+
+      # Container scanning (if Dockerfile exists)
+      - name: Build image for scanning
+        run: docker build -t ${{ env.IMAGE_NAME }}:scan -f docker/Dockerfile .
+
+      - name: Container vulnerability scan (OWASP A06)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:scan
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+

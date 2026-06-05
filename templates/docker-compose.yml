@@ -1,0 +1,94 @@
+# Nexus Holdings — Stage 1 Local Deployment
+# Usage: cp .env.example .env && ./scripts/preflight.sh && docker compose up -d
+#
+# This template provides a complete local deployment stack:
+#   - App container (Node.js or Python, configurable)
+#   - PostgreSQL database
+#   - Nginx reverse proxy with SSL termination ready
+#
+# Secrets: Injected via 1Password CLI — see scripts/inject-secrets.sh
+
+version: "3.9"
+
+services:
+  # ── Application ────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        - NODE_ENV=${NODE_ENV:-production}
+    container_name: ${COMPANY_SLUG}-app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      PORT: ${APP_PORT:-3000}
+      # Bedrock API configuration — keys injected at runtime via 1Password
+      BEDROCK_ENDPOINT: ${BEDROCK_ENDPOINT:-https://bedrock-runtime.us-east-1.amazonaws.com}
+      BEDROCK_REGION: ${BEDROCK_REGION:-us-east-1}
+      BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-anthropic.claude-sonnet-4-20250514}
+    ports:
+      - "${APP_PORT:-3000}:${APP_PORT:-3000}"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${APP_PORT:-3000}/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - nexus-net
+
+  # ── PostgreSQL ─────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: ${COMPANY_SLUG}-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nexus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-nexus_db}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nexus} -d ${POSTGRES_DB:-nexus_db}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - nexus-net
+
+  # ── Nginx Reverse Proxy ────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: ${COMPANY_SLUG}-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - nexus-net
+
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  nexus-net:
+    driver: bridge

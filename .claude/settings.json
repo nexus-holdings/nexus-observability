@@ -1,0 +1,17 @@
+{
+  "$schema": "https://docs.claude.ai/claude-code/settings-schema.json",
+  "hooks": {
+    "postEdit": [
+      {
+        "command": "npx tsc --noEmit 2>&1 | head -20 || true",
+        "description": "Type-check after edits — catch errors before they cascade",
+        "timeout": 30000
+      },
+      {
+        "command": "npx eslint --no-error-on-unmatched-pattern --max-warnings=0 $CLAUDE_EDITED_FILES 2>&1 | head -20 || true",
+        "description": "Lint edited files after each change",
+        "timeout": 15000
+      }
+    ]
+  }
+}
