@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/home/ian/Projects/nexus-holdings/nexus-observability"
+      ]
+    },
+    "paperclip": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@paperclipai/mcp-server"
+      ],
+      "env": {
+        "PAPERCLIP_API_BASE": "http://127.0.0.1:3100/api"
+      }
+    }
+  }
+}
