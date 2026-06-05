@@ -1,0 +1,24 @@
+[project]
+name = "nexus-observability"
+version = "0.1.0"
+description = "Dashboards, alerts, and forensic views over Nexus platform behaviour"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "psycopg[binary]>=3.3",
+]
+
+[project.scripts]
+obs-dashboard = "dashboard:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "tests"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
