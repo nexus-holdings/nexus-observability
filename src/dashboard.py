@@ -80,7 +80,7 @@ def _render_spend(rows: list[dict], *, file) -> None:
                 f" {_fmt_cents(r['spent_cents']):>10}"
                 f" {int(r['input_tokens']):>10,}"
                 f" {int(r['output_tokens']):>10,}"
-                f" \${float(r['cost_usd'] or 0):>9.2f}",
+                f" ${float(r['cost_usd'] or 0):>9.2f}",
                 file=file,
             )
     print(file=file)
