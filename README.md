@@ -29,11 +29,12 @@ A read-only CLI that queries Paperclip Postgres and prints four sections:
 # Default: last 7 days, standard DSN
 uv run python -m src.dashboard
 
-# Custom lookback and DSN
-uv run python -m src.dashboard --days 14 --dsn postgresql://...
-```
+# Custom lookback window
+uv run python -m src.dashboard --days 14
 
-Environment variable `PAPERCLIP_DB` overrides the default DSN.
+# Custom DSN (also via PAPERCLIP_DB env var)
+uv run python -m src.dashboard --dsn postgresql://paperclip:paperclip@127.0.0.1:54329/paperclip
+```
 
 ### Running Tests
 
