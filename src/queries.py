@@ -10,6 +10,11 @@ from __future__ import annotations
 from typing import Any
 
 
+def _rows_to_dicts(cur) -> list[dict]:
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
 def sessions_per_company_per_day(conn: Any, days: int = 7) -> list[dict]:
     """Heartbeat runs grouped by company and calendar day."""
     sql = """
@@ -26,8 +31,7 @@ def sessions_per_company_per_day(conn: Any, days: int = 7) -> list[dict]:
     """
     with conn.cursor() as cur:
         cur.execute(sql, {"days": days})
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row)) for row in cur.fetchall()]
+        return _rows_to_dicts(cur)
 
 
 def agent_spend(conn: Any) -> list[dict]:
@@ -56,8 +60,7 @@ def agent_spend(conn: Any) -> list[dict]:
     """
     with conn.cursor() as cur:
         cur.execute(sql)
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row)) for row in cur.fetchall()]
+        return _rows_to_dicts(cur)
 
 
 def active_routines(conn: Any) -> list[dict]:
@@ -75,8 +78,7 @@ def active_routines(conn: Any) -> list[dict]:
     """
     with conn.cursor() as cur:
         cur.execute(sql)
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row)) for row in cur.fetchall()]
+        return _rows_to_dicts(cur)
 
 
 def recovery_comment_counts(conn: Any, days: int = 7) -> list[dict]:
@@ -98,94 +100,4 @@ def recovery_comment_counts(conn: Any, days: int = 7) -> list[dict]:
     """
     with conn.cursor() as cur:
         cur.execute(sql, {"days": days})
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row)) for row in cur.fetchall()]
-
-
-def check_cap_proximity(
-    spend_rows: list[dict],
-    warn_pct: float = 80,
-    crit_pct: float = 95,
-    days_elapsed: int | None = None,
-) -> list[dict]:
-    """Return alert dicts for companies near their monthly budget cap.
-
-    Compares each company's spent_cents against budget_cents.  Returns an
-    alert dict for every company at or above warn_pct.  Skips companies with
-    zero or missing budget.
-
-    Args:
-        spend_rows:    Output of agent_spend().
-        warn_pct:      Percentage threshold for a warn-level alert (default 80).
-        crit_pct:      Percentage threshold for a critical-level alert (default 95).
-        days_elapsed:  Days into the month for burn-rate projection.  Defaults
-                       to the current calendar day when None.
-
-    Returns:
-        List of dicts with keys: company, metric, current, cap, pct_used,
-        level ('warn' | 'critical'), estimated_days_to_cap (float | None).
-    """
-    import datetime
-
-    if days_elapsed is None:
-        days_elapsed = datetime.datetime.now().day
-
-    alerts = []
-    for row in spend_rows:
-        budget = row.get("budget_cents") or 0
-        spent = row.get("spent_cents") or 0
-        if budget <= 0:
-            continue
-        pct = (spent / budget) * 100
-        if pct < warn_pct:
-            continue
-
-        level = "critical" if pct >= crit_pct else "warn"
-
-        estimated_days: float | None = None
-        if days_elapsed > 0 and spent > 0:
-            daily_rate = spent / days_elapsed
-            remaining = budget - spent
-            if daily_rate > 0 and remaining > 0:
-                estimated_days = remaining / daily_rate
-
-        alerts.append(
-            {
-                "company": row["company"],
-                "metric": "spend",
-                "current": spent,
-                "cap": budget,
-                "pct_used": pct,
-                "level": level,
-                "estimated_days_to_cap": estimated_days,
-            }
-        )
-
-    return alerts
-
-
-def check_cap_proximity(
-    spend: list[dict],
-    warn_pct: float = 80,
-    crit_pct: float = 95,
-) -> list[dict]:
-    """Return alert dicts for companies approaching their monthly budget cap."""
-    alerts = []
-    for row in spend:
-        budget = row.get("budget_cents") or 0
-        if budget <= 0:
-            continue
-        spent = row.get("spent_cents") or 0
-        pct = spent / budget * 100
-        if pct >= warn_pct:
-            level = "crit" if pct >= crit_pct else "warn"
-            alerts.append({
-                "company": row["company"],
-                "metric": "monthly spend",
-                "level": level,
-                "pct_used": pct,
-                "current": spent,
-                "cap": budget,
-                "estimated_days_to_cap": None,
-            })
-    return alerts
+        return _rows_to_dicts(cur)
