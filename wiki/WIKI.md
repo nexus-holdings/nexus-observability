@@ -1,4 +1,4 @@
-# {Company Name} — Wiki Index
+# Nexus Observability — Wiki Index
 
 > Load this file at the start of every session to orient yourself.
 
