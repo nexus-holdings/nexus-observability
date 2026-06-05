@@ -94,44 +94,6 @@ def recovery_comment_counts(conn, days: int = 30) -> list[dict]:
 
 
 def check_cap_proximity(
-    spend: list[dict],
-    warn_pct: float = 80,
-    crit_pct: float = 95,
-    days_elapsed: int | None = None,
-) -> list[dict]:
-    """Return alert dicts for companies approaching their monthly budget cap.
-
-    days_elapsed: days into the billing month — used to estimate ETA.
-    If None or 0, estimated_days_to_cap is None.
-    """
-    alerts = []
-    for row in spend:
-        budget = row.get("budget_cents") or 0
-        if budget <= 0:
-            continue
-        spent = row.get("spent_cents") or 0
-        pct = spent / budget * 100
-        if pct < warn_pct:
-            continue
-        level = "critical" if pct >= crit_pct else "warn"
-        remaining = budget - spent
-        eta = None
-        if days_elapsed and days_elapsed > 0 and spent > 0 and remaining > 0:
-            rate_per_day = spent / days_elapsed
-            eta = remaining / rate_per_day
-        alerts.append({
-            "company": row["company"],
-            "metric": "spend",
-            "level": level,
-            "pct_used": pct,
-            "current": spent,
-            "cap": budget,
-            "estimated_days_to_cap": eta,
-        })
-    return alerts
-
-
-def check_cap_proximity(
     spend_rows: list[dict],
     warn_pct: float = 80,
     crit_pct: float = 95,
@@ -143,6 +105,9 @@ def check_cap_proximity(
     company at or above *warn_pct*, keyed:
       company, metric, current, cap, pct_used,
       level ('warn' | 'critical'), estimated_days_to_cap (float | None).
+
+    days_elapsed: days elapsed in the billing period — used to compute burn
+    rate and ETA.  Pass 0 or omit to skip ETA calculation.
     """
     import datetime
 

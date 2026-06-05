@@ -1,4 +1,4 @@
-"""Tests for check_cap_proximity() and the alert render panel."""
+"""Tests for check_cap_proximity() — runaway-execution / volume-cap alert."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import io
 import pytest
 
 from src.queries import check_cap_proximity
-from src.dashboard import _render_alerts
+from src.dashboard import _render_cap_alerts
 
 
 def _row(company: str, budget_cents: int, spent_cents: int) -> dict:
@@ -62,7 +62,8 @@ def test_at_cap_is_critical():
 # ── Alert payload fields ─────────────────────────────────────────────────────
 
 def test_alert_fields_present():
-    a = check_cap_proximity([_row("Acme", 10_000, 9_000)])[0]
+    alerts = check_cap_proximity([_row("Acme", 10_000, 9_000)])
+    a = alerts[0]
     assert a["company"] == "Acme"
     assert a["metric"] == "spend"
     assert a["current"] == 9_000
@@ -84,7 +85,7 @@ def test_estimated_days_none_when_no_elapsed():
 
 
 def test_estimated_days_none_when_at_cap():
-    # remaining == 0 → no meaningful ETA
+    # remaining == 0, so no meaningful ETA
     alerts = check_cap_proximity([_row("Acme", 10_000, 10_000)], days_elapsed=15)
     assert alerts[0]["estimated_days_to_cap"] is None
 
@@ -117,25 +118,36 @@ def test_multiple_companies_mixed():
 
 
 def test_custom_thresholds():
-    # 70% — below default 80% but above custom 60%
-    alerts = check_cap_proximity([_row("Acme", 10_000, 7_000)], warn_pct=60, crit_pct=90)
+    rows = [_row("Acme", 10_000, 7_000)]  # 70%
+    # With lower warn threshold of 60%, should trigger
+    alerts = check_cap_proximity(rows, warn_pct=60, crit_pct=90)
     assert len(alerts) == 1
     assert alerts[0]["level"] == "warn"
 
 
-# ── _render_alerts ───────────────────────────────────────────────────────────
+# ── Dashboard render ─────────────────────────────────────────────────────────
 
-def test_render_alerts_empty():
+def test_render_cap_alerts_warn():
+    alerts = check_cap_proximity([_row("Acme", 10_000, 8_200)])
     buf = io.StringIO()
-    _render_alerts([], file=buf)
-    assert "(no alerts)" in buf.getvalue()
-
-
-def test_render_alerts_shows_level_and_company():
-    alerts = check_cap_proximity([_row("Acme", 10_000, 9_200)], days_elapsed=10)
-    buf = io.StringIO()
-    _render_alerts(alerts, file=buf)
+    _render_cap_alerts(alerts, file=buf)
     out = buf.getvalue()
-    assert "WARN" in out or "CRITICAL" in out
+    assert "VOLUME CAP PROXIMITY" in out
     assert "Acme" in out
-    assert "spend" in out
+    assert "WARN" in out
+
+
+def test_render_cap_alerts_critical():
+    alerts = check_cap_proximity([_row("Danger Corp", 10_000, 9_600)])
+    buf = io.StringIO()
+    _render_cap_alerts(alerts, file=buf)
+    out = buf.getvalue()
+    assert "CRITICAL" in out
+    assert "Danger Corp" in out
+
+
+def test_render_cap_alerts_shows_eta():
+    alerts = check_cap_proximity([_row("Acme", 10_000, 8_000)], days_elapsed=10)
+    buf = io.StringIO()
+    _render_cap_alerts(alerts, file=buf)
+    assert "2.5d" in buf.getvalue()
