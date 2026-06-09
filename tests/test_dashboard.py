@@ -8,6 +8,7 @@ pre-canned rows — no live database required.
 from __future__ import annotations
 
 import io
+import json
 import sys
 from datetime import date
 
@@ -25,6 +26,7 @@ from src.dashboard import (
     _fmt_cents,
     collect,
     render,
+    render_json,
     _render_sessions,
     _render_spend,
     _render_routines,
@@ -218,3 +220,142 @@ def test_render_contains_all_sections():
     assert "Agent Spend" in out
     assert "Active Routines" in out
     assert "Recovery Comments" in out
+
+
+# ---------------------------------------------------------------------------
+# render_json — JSON output mode
+# ---------------------------------------------------------------------------
+
+FULL_DATA = {
+    "sessions": [{"company": "Co A", "day": date(2026, 6, 4), "runs": 10, "recovery_runs": 1}],
+    "spend": [{"company": "Co A", "budget_cents": 5000, "spent_cents": 1200,
+               "input_tokens": 100000, "output_tokens": 8000, "cost_usd": 0.5}],
+    "routines": [{"company": "Co A", "status": "active", "count": 3}],
+    "recovery": [{"company": "Co A", "recovery_comments": 7}],
+    "cap_alerts": [],
+}
+
+
+def test_render_json_is_parseable():
+    buf = io.StringIO()
+    render_json(FULL_DATA, file=buf)
+    parsed = json.loads(buf.getvalue())
+    assert isinstance(parsed, dict)
+
+
+def test_render_json_top_level_keys():
+    buf = io.StringIO()
+    render_json(FULL_DATA, file=buf)
+    parsed = json.loads(buf.getvalue())
+    assert set(parsed.keys()) == {"sessions", "spend", "routines", "recovery", "cap_alerts"}
+
+
+def test_render_json_date_serialized_as_string():
+    buf = io.StringIO()
+    render_json(FULL_DATA, file=buf)
+    parsed = json.loads(buf.getvalue())
+    assert parsed["sessions"][0]["day"] == "2026-06-04"
+
+
+def test_render_json_single_line():
+    """stdout must be exactly one JSON object — no extra lines."""
+    buf = io.StringIO()
+    render_json(FULL_DATA, file=buf)
+    lines = [l for l in buf.getvalue().splitlines() if l.strip()]
+    assert len(lines) == 1
+
+
+def test_render_json_empty_sections():
+    data = {
+        "sessions": [], "spend": [], "routines": [], "recovery": [], "cap_alerts": [],
+    }
+    buf = io.StringIO()
+    render_json(data, file=buf)
+    parsed = json.loads(buf.getvalue())
+    assert parsed["sessions"] == []
+    assert parsed["cap_alerts"] == []
+
+
+def test_render_json_with_cap_alerts():
+    data = dict(FULL_DATA)
+    data["cap_alerts"] = [
+        {"company": "Co A", "level": "critical", "pct_used": 95.0,
+         "current": 4750, "cap": 5000, "estimated_days_to_cap": 2.3}
+    ]
+    buf = io.StringIO()
+    render_json(data, file=buf)
+    parsed = json.loads(buf.getvalue())
+    assert len(parsed["cap_alerts"]) == 1
+    assert parsed["cap_alerts"][0]["level"] == "critical"
+
+
+# ---------------------------------------------------------------------------
+# render_json() tests
+# ---------------------------------------------------------------------------
+
+SAMPLE_DATA = {
+    "sessions": [{"company": "Co A", "day": date(2026, 6, 4), "runs": 10, "recovery_runs": 1}],
+    "spend": [{"company": "Co A", "budget_cents": 5000, "spent_cents": 1200,
+               "input_tokens": 100000, "output_tokens": 8000, "cost_usd": 0.5}],
+    "routines": [{"company": "Co A", "status": "active", "count": 3}],
+    "recovery": [{"company": "Co A", "recovery_comments": 7}],
+    "cap_alerts": [],
+}
+
+
+def test_render_json_is_parseable():
+    buf = io.StringIO()
+    render_json(SAMPLE_DATA, file=buf)
+    out = buf.getvalue().strip()
+    # Must be exactly one JSON object (no leading/trailing junk)
+    parsed = json.loads(out)
+    assert isinstance(parsed, dict)
+
+
+def test_render_json_top_level_keys():
+    buf = io.StringIO()
+    render_json(SAMPLE_DATA, file=buf)
+    parsed = json.loads(buf.getvalue())
+    assert set(parsed.keys()) == {"sessions", "spend", "routines", "recovery", "cap_alerts"}
+
+
+def test_render_json_date_serialized_as_string():
+    buf = io.StringIO()
+    render_json(SAMPLE_DATA, file=buf)
+    parsed = json.loads(buf.getvalue())
+    assert parsed["sessions"][0]["day"] == "2026-06-04"
+
+
+def test_render_json_data_values():
+    buf = io.StringIO()
+    render_json(SAMPLE_DATA, file=buf)
+    parsed = json.loads(buf.getvalue())
+    assert parsed["sessions"][0]["runs"] == 10
+    assert parsed["spend"][0]["budget_cents"] == 5000
+    assert parsed["routines"][0]["status"] == "active"
+    assert parsed["recovery"][0]["recovery_comments"] == 7
+    assert parsed["cap_alerts"] == []
+
+
+def test_render_json_empty_sections():
+    data = {
+        "sessions": [],
+        "spend": [],
+        "routines": [],
+        "recovery": [],
+        "cap_alerts": [],
+    }
+    buf = io.StringIO()
+    render_json(data, file=buf)
+    parsed = json.loads(buf.getvalue())
+    for key in ("sessions", "spend", "routines", "recovery", "cap_alerts"):
+        assert parsed[key] == []
+
+
+def test_render_json_no_text_output():
+    """JSON mode must not emit any text-report markers."""
+    buf = io.StringIO()
+    render_json(SAMPLE_DATA, file=buf)
+    out = buf.getvalue()
+    assert "===" not in out
+    assert "Sessions per Company" not in out
