@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import datetime
+import json
 import os
 import sys
 from typing import Any
@@ -21,6 +23,12 @@ def _fmt_cents(cents: int | None) -> str:
     if not cents:
         return "$0.00"
     return f"${cents / 100:.2f}"
+
+
+def _json_default(obj):
+    if isinstance(obj, (datetime.date, datetime.datetime)):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
 def collect(conn: Any, *, days: int = 7) -> dict:
@@ -46,6 +54,13 @@ def render(data: dict, *, file=None) -> None:
     _render_spend(data["spend"], file=file)
     _render_routines(data["routines"], file=file)
     _render_recovery(data["recovery"], file=file)
+
+
+def render_json(data: dict, *, file=None) -> None:
+    """Print the report as a single JSON object to *file* (defaults to stdout)."""
+    if file is None:
+        file = sys.stdout
+    print(json.dumps(data, default=_json_default), file=file)
 
 
 def _render_cap_alerts(alerts: list[dict], *, file) -> None:
@@ -150,6 +165,12 @@ def main(argv: list[str] | None = None) -> int:
         default=7,
         help="Lookback window in days (default: 7)",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_output",
+        help="Output report as a single JSON object instead of formatted text",
+    )
     args = parser.parse_args(argv)
 
     conn = _connect(args.dsn)
@@ -158,7 +179,10 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         conn.close()
 
-    render(data)
+    if args.json_output:
+        render_json(data)
+    else:
+        render(data)
     return 0
 
 
