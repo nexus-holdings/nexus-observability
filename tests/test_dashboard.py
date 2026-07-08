@@ -24,7 +24,6 @@ from src.queries import (
 )
 from src.dashboard import (
     _fmt_cents,
-    collect,
     render,
     render_json,
     _render_sessions,
@@ -262,7 +261,7 @@ def test_render_json_single_line():
     """stdout must be exactly one JSON object — no extra lines."""
     buf = io.StringIO()
     render_json(FULL_DATA, file=buf)
-    lines = [l for l in buf.getvalue().splitlines() if l.strip()]
+    lines = [line for line in buf.getvalue().splitlines() if line.strip()]
     assert len(lines) == 1
 
 
