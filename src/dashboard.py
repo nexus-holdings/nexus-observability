@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import decimal
 import json
 import os
 import sys
@@ -28,6 +29,8 @@ def _fmt_cents(cents: int | None) -> str:
 def _json_default(obj):
     if isinstance(obj, (datetime.date, datetime.datetime)):
         return obj.isoformat()
+    if isinstance(obj, decimal.Decimal):
+        return float(obj)
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 

@@ -11,6 +11,7 @@ import io
 import json
 import sys
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
@@ -307,3 +308,26 @@ def test_render_json_no_text_output():
     out = buf.getvalue()
     assert "===" not in out
     assert "Sessions per Company" not in out
+
+
+def test_render_json_decimal_and_date_serialized():
+    """Live DB rows carry decimal.Decimal (numeric columns), not floats."""
+    data = {
+        "sessions": [{"company": "Co A", "day": date(2026, 6, 4), "runs": 10, "recovery_runs": 1}],
+        "spend": [{"company": "Co A", "budget_cents": 5000, "spent_cents": 1200,
+                   "input_tokens": 100000, "output_tokens": 8000,
+                   "cost_usd": Decimal("0.50")}],
+        "routines": [{"company": "Co A", "status": "active", "count": 3}],
+        "recovery": [{"company": "Co A", "recovery_comments": 7}],
+        "cap_alerts": [
+            {"company": "Co A", "level": "warn", "pct_used": Decimal("82.5"),
+             "current": Decimal("4125"), "cap": Decimal("5000"),
+             "estimated_days_to_cap": Decimal("3.2")}
+        ],
+    }
+    buf = io.StringIO()
+    render_json(data, file=buf)
+    parsed = json.loads(buf.getvalue())
+    assert parsed["sessions"][0]["day"] == "2026-06-04"
+    assert parsed["spend"][0]["cost_usd"] == 0.5
+    assert parsed["cap_alerts"][0]["pct_used"] == 82.5
