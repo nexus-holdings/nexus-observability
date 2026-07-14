@@ -93,6 +93,30 @@ def recovery_comment_counts(conn, days: int = 30) -> list[dict]:
         return _dict_rows(cur)
 
 
+def guard_activity(conn, days: int = 7) -> list[dict]:
+    """Heartbeat run status counts per company per UTC day (guard behavior).
+
+    Surfaces execution-guard cancellations alongside succeeded/failed runs
+    so cap-exhaustion patterns are visible without hand-written SQL.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT hr.created_at::date AS day,
+                   c.name AS company,
+                   hr.status,
+                   COUNT(*) AS count
+            FROM heartbeat_runs hr
+            JOIN companies c ON c.id = hr.company_id
+            WHERE hr.created_at >= NOW() - make_interval(days => %s)
+            GROUP BY hr.created_at::date, c.name, hr.status
+            ORDER BY day DESC, company
+            """,
+            (days,),
+        )
+        return _dict_rows(cur)
+
+
 def check_cap_proximity(
     spend_rows: list[dict],
     warn_pct: float = 80,

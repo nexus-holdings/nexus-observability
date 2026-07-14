@@ -20,6 +20,7 @@ sys.path.insert(0, ".")
 from src.queries import (
     active_routines,
     agent_spend,
+    guard_activity,
     recovery_comment_counts,
     sessions_per_company_per_day,
 )
@@ -31,6 +32,7 @@ from src.dashboard import (
     _render_spend,
     _render_routines,
     _render_recovery,
+    _render_guard_activity,
 )
 
 
@@ -112,6 +114,15 @@ def test_recovery_comment_counts_returns_dicts():
     cols = ["company", "recovery_comments"]
     result = recovery_comment_counts(FakeConn(rows, cols), days=7)
     assert result[0]["recovery_comments"] == 874
+
+
+def test_guard_activity_returns_dicts():
+    rows = [(date(2026, 7, 10), "Acme Corp", "cancelled", 4)]
+    cols = ["day", "company", "status", "count"]
+    result = guard_activity(FakeConn(rows, cols), days=7)
+    assert result[0]["company"] == "Acme Corp"
+    assert result[0]["status"] == "cancelled"
+    assert result[0]["count"] == 4
 
 
 # ---------------------------------------------------------------------------
@@ -202,6 +213,65 @@ def test_render_recovery_rows():
 
 
 # ---------------------------------------------------------------------------
+# _render_guard_activity
+# ---------------------------------------------------------------------------
+
+def test_render_guard_activity_empty():
+    buf = io.StringIO()
+    _render_guard_activity([], file=buf)
+    assert "(no data)" in buf.getvalue()
+
+
+def test_render_guard_activity_normal_mix():
+    rows = [
+        {"day": date(2026, 7, 10), "company": "Acme Corp", "status": "succeeded", "count": 40},
+        {"day": date(2026, 7, 10), "company": "Acme Corp", "status": "cancelled", "count": 3},
+        {"day": date(2026, 7, 10), "company": "Acme Corp", "status": "failed", "count": 1},
+    ]
+    buf = io.StringIO()
+    _render_guard_activity(rows, file=buf)
+    out = buf.getvalue()
+    assert "Acme Corp" in out
+    assert "40" in out
+    assert "!!" not in out
+
+
+def test_render_guard_activity_all_cancelled_flags():
+    rows = [
+        {"day": date(2026, 7, 9), "company": "F12 Holdings", "status": "cancelled", "count": 12},
+    ]
+    buf = io.StringIO()
+    _render_guard_activity(rows, file=buf)
+    out = buf.getvalue()
+    assert "F12 Holdings" in out
+    assert "!!" in out
+
+
+def test_render_guard_activity_cancelled_not_exceeding_succeeded_no_flag():
+    rows = [
+        {"day": date(2026, 7, 9), "company": "Acme Corp", "status": "succeeded", "count": 10},
+        {"day": date(2026, 7, 9), "company": "Acme Corp", "status": "cancelled", "count": 10},
+    ]
+    buf = io.StringIO()
+    _render_guard_activity(rows, file=buf)
+    out = buf.getvalue()
+    assert "!!" not in out
+
+
+def test_render_guard_activity_days_descending():
+    rows = [
+        {"day": date(2026, 7, 8), "company": "Acme Corp", "status": "succeeded", "count": 5},
+        {"day": date(2026, 7, 10), "company": "Acme Corp", "status": "succeeded", "count": 5},
+        {"day": date(2026, 7, 9), "company": "Acme Corp", "status": "succeeded", "count": 5},
+    ]
+    buf = io.StringIO()
+    _render_guard_activity(rows, file=buf)
+    lines = [line for line in buf.getvalue().splitlines() if "2026-07" in line]
+    days_in_order = [line.split()[1] for line in lines]
+    assert days_in_order == sorted(days_in_order, reverse=True)
+
+
+# ---------------------------------------------------------------------------
 # render() integration
 # ---------------------------------------------------------------------------
 
@@ -212,6 +282,9 @@ def test_render_contains_all_sections():
                    "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}],
         "routines": [{"company": "Co A", "status": "paused", "count": 2}],
         "recovery": [{"company": "Co A", "recovery_comments": 5}],
+        "guard_activity": [
+            {"day": date(2026, 6, 4), "company": "Co A", "status": "succeeded", "count": 3}
+        ],
     }
     buf = io.StringIO()
     render(data, file=buf)
@@ -220,6 +293,7 @@ def test_render_contains_all_sections():
     assert "Agent Spend" in out
     assert "Active Routines" in out
     assert "Recovery Comments" in out
+    assert "Guard Activity" in out
 
 
 
@@ -234,6 +308,9 @@ FULL_DATA = {
     "routines": [{"company": "Co A", "status": "active", "count": 3}],
     "recovery": [{"company": "Co A", "recovery_comments": 7}],
     "cap_alerts": [],
+    "guard_activity": [
+        {"day": date(2026, 6, 4), "company": "Co A", "status": "cancelled", "count": 2}
+    ],
 }
 
 
@@ -248,7 +325,19 @@ def test_render_json_top_level_keys():
     buf = io.StringIO()
     render_json(FULL_DATA, file=buf)
     parsed = json.loads(buf.getvalue())
-    assert set(parsed.keys()) == {"sessions", "spend", "routines", "recovery", "cap_alerts"}
+    assert set(parsed.keys()) == {
+        "sessions", "spend", "routines", "recovery", "cap_alerts", "guard_activity",
+    }
+
+
+def test_render_json_includes_guard_activity_key():
+    buf = io.StringIO()
+    render_json(FULL_DATA, file=buf)
+    parsed = json.loads(buf.getvalue())
+    assert "guard_activity" in parsed
+    assert parsed["guard_activity"][0]["company"] == "Co A"
+    assert parsed["guard_activity"][0]["status"] == "cancelled"
+    assert parsed["guard_activity"][0]["day"] == "2026-06-04"
 
 
 def test_render_json_date_serialized_as_string():
@@ -280,11 +369,12 @@ def test_render_json_data_values():
 def test_render_json_empty_sections():
     data = {
         "sessions": [], "spend": [], "routines": [], "recovery": [], "cap_alerts": [],
+        "guard_activity": [],
     }
     buf = io.StringIO()
     render_json(data, file=buf)
     parsed = json.loads(buf.getvalue())
-    for key in ("sessions", "spend", "routines", "recovery", "cap_alerts"):
+    for key in ("sessions", "spend", "routines", "recovery", "cap_alerts", "guard_activity"):
         assert parsed[key] == []
 
 
