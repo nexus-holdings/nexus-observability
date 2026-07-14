@@ -140,38 +140,6 @@ def _render_routines(rows: list[dict], *, file) -> None:
     print(file=file)
 
 
-def _render_guard_activity(rows: list[dict], *, file) -> None:
-    print("=== Guard Activity (last N days) ===", file=file)
-    if not rows:
-        print("  (no data)", file=file)
-        print(file=file)
-        return
-
-    by_key: dict[tuple, dict] = {}
-    for r in rows:
-        key = (r["day"], r["company"])
-        counts = by_key.setdefault(key, {"succeeded": 0, "cancelled": 0, "failed": 0})
-        counts[r["status"]] = counts.get(r["status"], 0) + int(r["count"])
-
-    print(
-        f"  {'Day':<12} {'Company':<32}"
-        f" {'Succeeded':>9} {'Cancelled':>9} {'Failed':>9}",
-        file=file,
-    )
-    print(
-        f"  {'-'*12} {'-'*32} {'-'*9} {'-'*9} {'-'*9}",
-        file=file,
-    )
-    for (day, company), counts in sorted(by_key.items(), key=lambda kv: kv[0][0], reverse=True):
-        flag = "  !!" if counts["cancelled"] > counts["succeeded"] else ""
-        print(
-            f"  {str(day):<12} {company:<32}"
-            f" {counts['succeeded']:>9,} {counts['cancelled']:>9,} {counts['failed']:>9,}{flag}",
-            file=file,
-        )
-    print(file=file)
-
-
 def _render_recovery(rows: list[dict], *, file) -> None:
     print("=== Recovery Comments (last N days) ===", file=file)
     if not rows:
